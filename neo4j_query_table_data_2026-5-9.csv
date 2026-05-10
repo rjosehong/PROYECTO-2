@@ -1,0 +1,12 @@
+n
+(:Persona {nombre: Pablo})
+(:Persona {nombre: Ana})
+(:Persona {nombre: Paula})
+(:Persona {nombre: Héctor})
+(:Genero {nombre: Rock})
+"(:Cancion {artista: AC/DC, nombre: Thunderstruck})"
+(:Genero {nombre: Pop})
+(:Genero {nombre: Reggeaton})
+"(:Cancion {artista: Bad Bunny, nombre: DtMf})"
+"(:Cancion {artista: Avenged Sevenfold, nombre: Save Me})"
+"(:Cancion {artista: Nothing But Thieves, nombre: Amsterdam})"
