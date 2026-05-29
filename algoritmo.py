@@ -1,101 +1,124 @@
-import warnings
-warnings.filterwarnings("ignore")
-import networkx as nx
+from neo4j import GraphDatabase
 
 class AlgoritmoRecomendacion:
 
-    def __init__(self, graphml_path):
+    def __init__(self):
 
-        self.G = nx.read_graphml(graphml_path)
+        self.driver = GraphDatabase.driver(
+            "neo4j://127.0.0.1:7687",
+            auth=("neo4j", "contraseña")
+        )
 
     #función para encontrar una persona por nombre
     def find_person(self, name):
 
-        for node, data in self.G.nodes(data=True):
+        query = """
+        MATCH (p:Persona {nombre:$name})
+        RETURN p.nombre AS nombre
+        """
 
-            labels = str(data.get("labels")).lower()
+        with self.driver.session() as session:
 
-            if (
-                "persona" in labels
-                and data.get("nombre") == name
-            ):
-                return node
+            result = session.run(
+                query,
+                name=name
+            )
 
-        return None
-
-    #función para obtener información de canciones
-    def get_song_data(self, node_id):
-
-        data = self.G.nodes[node_id]
-
-        return {
-            "id": node_id,
-            "nombre": data.get("nombre"),
-            "artista": data.get("artista"),
-            "link": data.get("link"),
-            "genero": data.get("genero")
-        }
-
-    #función para verificar si un nodo es canción
-    def is_song(self, node_id):
-
-        data = self.G.nodes[node_id]
-
-        labels = str(data.get("labels")).lower()
-
-        return "cancion" in labels
+            return result.single()
 
     #función para obtener canciones que le gustan a una persona
-    def liked_songs(self, person_node, genre="All"):
+    def liked_songs(self, person_name, genre="All"):
+
+        if genre == "All":
+
+            query = """
+            MATCH (p:Persona {nombre:$name})-[:LE_GUSTA]->(s:Cancion)
+            RETURN
+                s.nombre AS nombre,
+                s.artista AS artista,
+                s.link AS link,
+                s.genero AS genero
+            """
+
+        else:
+
+            query = """
+            MATCH (p:Persona {nombre:$name})-[:LE_GUSTA]->(s:Cancion)
+            WHERE s.genero = $genre
+            RETURN
+                s.nombre AS nombre,
+                s.artista AS artista,
+                s.link AS link,
+                s.genero AS genero
+            """
 
         songs = []
 
-        for neighbor in self.G.neighbors(person_node):
+        with self.driver.session() as session:
 
-            if self.is_song(neighbor):
+            result = session.run(
+                query,
+                name=person_name,
+                genre=genre
+            )
 
-                song_data = self.get_song_data(neighbor)
+            for record in result:
 
-                if (
-                    genre == "All"
-                    or song_data["genero"] == genre
-                ):
-
-                    songs.append(song_data)
+                songs.append({
+                    "nombre": record["nombre"],
+                    "artista": record["artista"],
+                    "link": record["link"],
+                    "genero": record["genero"]
+                })
 
         return songs
 
-    #función para encontrar amigos, incluso amigos de amigos
-    def get_friends(self, person_node):
+    #función para encontrar amigos y amigos de amigos, y amigos de amigos de amigos de amigos, etc. xd
+    def get_friends(self, person_name):
+
+        query = """
+        MATCH (p:Persona {nombre:$name})-[:ES_AMIGO_DE]-(f:Persona)
+        RETURN f.nombre AS nombre
+        """
 
         friends = []
 
-        for neighbor in self.G.neighbors(person_node):
+        with self.driver.session() as session:
 
-            data = self.G.nodes[neighbor]
+            result = session.run(
+                query,
+                name=person_name
+            )
 
-            labels = str(data.get("labels")).lower()
+            for record in result:
 
-            if "persona" in labels:
-
-                friends.append(neighbor)
+                friends.append(
+                    record["nombre"]
+                )
 
         return friends
 
     #algoritmo principal de recomendación
     def recommend(self, main_friend, genre="All", limit=25):
+
         origin = self.find_person(main_friend)
+
         if not origin:
             return []
+
         recommendations = []
 
         #prevee que no haya duplicados
         used_song_names = set()
+
         visited_people = set()
-        queue = [origin]
+
+        queue = [(main_friend, 0)]
 
         while queue and len(recommendations) < limit:
-            current_person = queue.pop(0)
+
+            current_person, depth = queue.pop(0)
+
             if current_person in visited_people:
                 continue
 
@@ -103,13 +126,32 @@ class AlgoritmoRecomendacion:
 
             #amigo 'main' o el que va a servir como nodo origen
             #y todos los amigos conectados a él indirectamente
-            songs = self.liked_songs(current_person, genre)
+            songs = self.liked_songs(
+                current_person,
+                genre
+            )
 
             for song in songs:
+
                 if song["nombre"] not in used_song_names:
+
+                    if depth == 0:
+                        song["score"] = 1.0
+
+                    elif depth == 1:
+                        song["score"] = 0.7
+
+                    else:
+                        song["score"] = max(
+                            0.1,
+                            0.7 - (depth * 0.1)
+                        )
+
                     recommendations.append(song)
 
-                    used_song_names.add(song["nombre"])
+                    used_song_names.add(
+                        song["nombre"]
+                    )
 
                     if len(recommendations) >= limit:
                         break
@@ -117,20 +159,33 @@ class AlgoritmoRecomendacion:
             #según cuál sea tu 'main' amigo, canciones de amigos de main amigo van a ser
             #recomendadas, no importa el género de canción, a menos de que se escoja 
             #que recomiende uno en específico
-            friends = self.get_friends(current_person)
+            friends = self.get_friends(
+                current_person
+            )
 
             for friend in friends:
+
                 if friend not in visited_people:
-                    queue.append(friend)
+
+                    queue.append(
+                        (friend, depth + 1)
+                    )
 
         #si hay menos canciones que el límite, repite el ciclo
         if len(recommendations) < limit:
+
             cycle = recommendations.copy()
+
             index = 0
 
             while (
-                len(recommendations) < limit and len(cycle) > 0):
-                recommendations.append(cycle[index % len(cycle)])
+                len(recommendations) < limit
+                and len(cycle) > 0
+            ):
+
+                recommendations.append(
+                    cycle[index % len(cycle)]
+                )
 
                 index += 1
 

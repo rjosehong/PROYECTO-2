@@ -1,28 +1,59 @@
 from algoritmo import AlgoritmoRecomendacion
 
 class datosRecomendacion:
-  def __init__(self):
-    self.recommender = AlgoritmoRecomendacion("music.graphml")
 
-  def get_people(self):
-    people = []
-    for _, data in self.recommender.G.nodes(data=True):
-      if data.get("labels") == ":Persona":
-        people.append(data.get("nombre"))
-    return sorted(people)
-  
-  def get_genres(self):
-    genres = set()
-    for _, data in self.recommender.G.nodes(data=True):
-        if data.get("labels") == ":Genero":
-            genres.add(data.get("nombre"))
+    def __init__(self):
 
-    genre_list = ["All"] + sorted(list(genres))
-    return genre_list
+        self.recommender = AlgoritmoRecomendacion()
 
-  def get_recommendations(self, person, genre):
-      return self.recommender.recommend(
-          person,
-          genre,
-          limit=25
-      )
+    def get_people(self):
+
+        query = """
+        MATCH (p:Persona)
+        RETURN p.nombre AS nombre
+        ORDER BY nombre
+        """
+
+        people = []
+
+        with self.recommender.driver.session() as session:
+
+            result = session.run(query)
+
+            for record in result:
+
+                people.append(
+                    record["nombre"]
+                )
+
+        return people
+
+    def get_genres(self):
+
+        query = """
+        MATCH (g:Genero)
+        RETURN g.nombre AS nombre
+        ORDER BY nombre
+        """
+
+        genres = []
+
+        with self.recommender.driver.session() as session:
+
+            result = session.run(query)
+
+            for record in result:
+
+                genres.append(
+                    record["nombre"]
+                )
+
+        return ["All"] + genres
+
+    def get_recommendations(self, person, genre):
+
+        return self.recommender.recommend(
+            person,
+            genre,
+            limit=25
+        )
