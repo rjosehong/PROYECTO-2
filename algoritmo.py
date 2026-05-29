@@ -8,6 +8,10 @@ class AlgoritmoRecomendacion:
             "neo4j://127.0.0.1:7687",
             auth=("neo4j", "contraseña")
         )
+        #cambiar a neo4j+s://033170aa.databases.neo4j.io
+        # y cambiar el auth a auth=("033170aa", "LEZ6giR0rbJAR-qA3DdtpjmqFKlg9T643IVldHTVndY")
+        #
+        #
 
     #función para encontrar una persona por nombre
     def find_person(self, name):
